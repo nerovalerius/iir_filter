@@ -98,10 +98,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="filter_f32.c" />
+    <ClCompile Include="filtsos.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="verificationdata\verificationdata\fdacoefs.h" />
+    <ClInclude Include="fdacoefs.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

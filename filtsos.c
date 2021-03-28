@@ -1,53 +1,20 @@
-// Write a C program filtsos which reads raw sample data blockwise from a stereo WAV file
-// and applies anexported SOS filter structure.
-// The IIR coefficients should be included as a header file within filtsos.c:
+// This Program is built upon the Example implementation of 32-bit binary floating point FIR algorithm from Peter Ott
 
-// Note that the outputs from MATLABand C are not bit - exact, as MATLAB :
-// internally still works with double precision floating point even if the filter is converted to single precision floating point
-// does not scale apply the gain values before each section, but rather applies a single scalar value
-// The maximum amplitude error between MATLABand C differs only in the LSB which is also the achievable goal for your implementation.
+/* Date  : 2018-06-04
+ * Author: Armin Niedermüller
+ * Course: DSP 2- Lab
+ * Description: Second Order Staged IIR Filter.
+ */
 
 #include <stdio.h>
 #include <stdint.h>
 #include "fdacoefs.h"
-// Use the fdacoefs.h file, that is provided within the eLearning course. This file includes
-// b_len, a_len;
-// MWSPT_NSEC
-// float[][] b, a;
+#define MAX_ORDER 3
+#define REGISTER_SIZE 100
 
+double register_x1[REGISTER_SIZE], register_x2[REGISTER_SIZE], register_y1[REGISTER_SIZE], register_y2[REGISTER_SIZE];
 
-
-// Read raw sample data blockwise from a stereo WAV file
-
-
-// Apply an Second Order IIR staged filter (SOS)
-// Normal IIR Filter - Page 104
-// Transform the IIR Filter to a series of second order Filters (SOS) - Page 107
-// a series of second order systems(SOS) Example: 2 * 3 = 6 order system
-
-// how to use the coefficients ?
-// each b_0, b_1, b_3
-// NSEC = 7 are 7 Filters
-// b_len = how many coefficients per array position
-// float b and b has 3 coefficients per position
-
-// Put the filters together
-// Signal Input -> (First Filter) -> Signal Output -> (Second Filter) -> Signal Output -> (Third Filter) -> Final Signal Output
-// Take the  audio input x_k and process it with the 1t unit, pass to the next unit and pass to the last unit
-// Design one filter unit and then give 3 different parameters to it
-// Do not simply add the a part from the fir filter
-
-
-/* Date  : 2018-06-04
- * Author: Peter Ott
- * Course: AISE-M/ITS-M/ITSB-M DSP1
- * Description:
- * 	Example implementation of 32-bit binary floating point FIR algorithm.
- * 	For WAV files with 16-bit signed stereo data @ 44.1kHz sample rate.
- * Code based on following references:
- * [1]"Tutorial: Decoding Audio (Windows)", msdn.microsoft.com, 2018. [Online]. Available: https://msdn.microsoft.com/en-us/library/windows/desktop/dd757929(v=vs.85).aspx. [Accessed: 23-03-2018].
- */
-
+/* Begin - Reference - Parts by Peter Ott */
 typedef struct
 {
 	char RiffSignature[4]; // Should be "RIFF"
@@ -90,50 +57,46 @@ int16_t int16_sat(float x)
 
 	return (int16_t)x;
 }
+/* End - Reference - Parts by Peter Ott */
 
-//  int16_t f32_fir(int16_t x, int16_t* pShiftRegister)
-//  {
-//  	float sum = 0;
-//  	for (int i = f32_fir_coeffs_len - 1; i > 0; i--)
-//  	{
-//  		pShiftRegister[i] = pShiftRegister[i - 1];
-//  		sum = ((float)pShiftRegister[i] / 32768.0f * f32_fir_coeffs[i]) + sum;
-//  	}
-//  	pShiftRegister[0] = x;
-//  	sum = ((float)pShiftRegister[0] / 32768.0f * f32_fir_coeffs[0]) + sum;
-//  
-//  	return int16_sat(sum * 32768);
-//  }
+// IRR Filter - Direct Form 1
+float iir_df_1(int stage, float x)
+{
+	float y, summation_point;
 
+	summation_point = x * b[stage][0] + b[stage][1] * register_x1[stage] + b[stage][2] * register_x2[stage];
+	y = a[stage][0] * summation_point - a[stage][1] * register_y1[stage] - a[stage][2] * register_y2[stage];
 
-int16_t f32_iir(int16_t x, int16_t* pShiftRegister, size_t stage){
+	register_x2[stage] = register_x1[stage];
+	register_x1[stage] = x;
+	register_y2[stage] = register_y1[stage];
+	register_y1[stage] = y;
 
-	// Buffer
-	float w[3] = { 0, 0, 0 };
-	float y = 0;
-
-	w[0] = x;
-
-	for (size_t i = 0; i <= b_len; i++) {
-		w[0] += (a[stage][i] * w[i+1]);
-	}
-
-	for (size_t i = 0; i <= b_len; i++) {
-		y += (b[stage][i] * w[i]);
-	}
-
-	// w[0] = x + (a[stage][0] * w[1]) + (a[stage][1] * w[2]);
-	// y = (b[stage][0] * w[0]) + (b[stage][1] * w[1]) + (b[stage][2] * w[2]);
-	//w[2] = w[1];
-	//w[1] = w[0];
-
-	// Prepare next Filter Stage
-	stage++;
-
-	return int16_stat(y * 32768);
+	return int16_sat(y);
 }
 
+// IRR Filter - Direct Form 2
+int16_t iir_df_2(int16_t x, size_t stage, float* w) {
 
+	float y = 0;
+	w[0] = (float)x;
+	
+	for (size_t i = 0; i < a_len[stage]; i++) {
+		w[0] -= (a[stage][i] * w[i + 1]);
+	}
+	
+	for (size_t i = 0; i < b_len[stage]; i++) {
+		y += (b[stage][i] * w[i]);
+	}
+	
+	for (int i = MAX_ORDER; i > 0; i--) {
+		w[i] = w[i-1]; // Store values for later use of "past" values (e.g x_(k-1))
+	}
+
+	return int16_sat(y);
+}
+
+/* Begin - Reference - Parts by Peter Ott */
 int main(int argc, char* argv[])
 {
 	if (argc < 3)
@@ -151,10 +114,24 @@ int main(int argc, char* argv[])
 	fread(&waveHeader, sizeof(WaveHeader), 1, inputFile);
 
 	int16_t buffer[2048], leftSample[1024], rightSample[1024], leftFiltered[1024], rightFiltered[1024];
+	/* End - Reference - Parts by Peter Ott */
+	/* Begin - Reference - Parts by Peter Ott */
+	int16_t y_left, y_right, x_left, x_right;
+	/* End - Reference - Parts by Peter Ott */
 
-	int16_t shiftregister_left[f32_fir_coeffs_len] = { 0 }; // C syntax -> {} for C++
-	int16_t shiftregister_right[f32_fir_coeffs_len] = { 0 }; // C syntax -> {} for C++
+	float w[MAX_ORDER+1] = { 0 };	// IIR Buffer
+	double y;
+	int j, k;
 
+	for (j = 0; j < REGISTER_SIZE; j++) // Init the shift registers.
+	{
+		register_x1[j] = 0.0;
+		register_x2[j] = 0.0;
+		register_y1[j] = 0.0;
+		register_y2[j] = 0.0;
+	}
+
+	/* Begin - Reference - Parts by Peter Ott */
 	// Loop over all samples inside the WAV File
 	for (uint32_t blockCount = 0; blockCount < waveHeader.dataHeader.DataLength; blockCount += sizeof(int16_t) * 2048)
 	{
@@ -166,32 +143,42 @@ int main(int argc, char* argv[])
 			leftSample[i] = buffer[2 * i];
 			rightSample[i] = buffer[2 * i + 1];
 		}
+		/* End - Reference - Parts by Peter Ott */
 
 		// Processing
 		for (uint16_t i = 0; i < 1024; i++)
 		{
 
+			// Filter Stage 0 - Direct Form 1
+			y_left = iir_df_1(0, leftSample[i]);
+			y_right = iir_df_1(0, rightSample[i]);
 
-			size_t stage = 0;
+			// Filter Stage 0 - Direct Form 2
+			//y_left = iir_df_2(leftSample[i], 0, w);
+			//y_right = iir_df_2(rightSample[i], 0, w);
+						
+			// Further Filter Stages
+			for (size_t stage = 1; stage < MWSPT_NSEC; stage++) {
 
-			// Stage 1
-			leftFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
-			rightFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
+				x_left = y_left;
+				x_right = y_right;
 
-			// Stage 2
-			leftFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
-			rightFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
+				// Single Stage - Direct Form 1
+				y_left = iir_df_1(stage, x_left);
+				y_right = iir_df_1(stage, x_right);
 
-			// Stage 3
-			leftFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
-			rightFiltered[i] = f32_iir(leftSample[i], shiftregister_left, stage);
+				// Single Stage - Direct Form 2
+				//y_left = iir_df_2(x_left, stage, w);
+				//y_right = iir_df_2(x_right, stage, w);
+				//y_right = iir_df_2(x_right, stage, w);
 
-			//leftFiltered[i] = f32_fir(leftSample[i], shiftregister_left);
-			//rightFiltered[i] = f32_fir(rightSample[i], shiftregister_right);
-			//leftFiltered[i]  = leftSample[i];
-			//rightFiltered[i] = rightSample[i];
+			}
+
+			leftFiltered[i] = y_left;
+			rightFiltered[i] = y_right;
 		}
 
+		/* Begin - Reference - Parts by Peter Ott */
 		// Interleave
 		for (uint16_t i = 0; i < 1024; i++)
 		{
@@ -214,5 +201,6 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+/* End - Reference - Parts by Peter Ott */
 
 

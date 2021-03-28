@@ -56,6 +56,7 @@ int16_t int16_sat(float x)
     return (int16_t)x;
 }
 
+
 int16_t f32_fir(int16_t x, int16_t* pShiftRegister)
 {
 	float sum = 0;
